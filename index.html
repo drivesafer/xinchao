@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenADAS — Biến xe bạn thành xe thông minh với 1 ứng dụng</title>
+  <meta name="description" content="OpenADAS giúp biến xe bạn thành xe thông minh với 1 ứng dụng. 2177km OpenADAS đã đồng hành an toàn cùng tài xế." />
+  <meta name="keywords" content="OpenADAS, ADAS, an toàn giao thông, xe thông minh, hỗ trợ lái xe, open source" />
+  <meta name="author" content="OpenADAS" />
+  <meta property="og:title" content="OpenADAS — Biến xe bạn thành xe thông minh với 1 ứng dụng" />
+  <meta property="og:description" content="2177km OpenADAS đã đồng hành an toàn cùng tài xế." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://xinchao.openadas.io.vn" />
+  <meta property="og:site_name" content="OpenADAS" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-white antialiased">
+  <main class="min-h-screen flex items-center justify-center px-4 py-8">
+    <section class="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 backdrop-blur p-6 sm:p-8 shadow-2xl">
+      <div class="space-y-6">
+        <div class="space-y-4">
+          <h1 class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
+            OpenADAS
+          </h1>
+
+          <div class="space-y-1">
+            <div class="text-5xl sm:text-6xl font-black tracking-tight leading-none">
+              <span id="km-counter">2170</span><span class="text-emerald-300">km</span>
+            </div>
+            <p class="text-base sm:text-lg text-zinc-200 leading-snug">
+              đã đồng hành an toàn cùng tài xế
+            </p>
+          </div>
+
+          <p class="text-base sm:text-lg text-zinc-200 leading-relaxed">
+            Biến xe bạn thành <span class="text-white font-semibold">xe thông minh</span> với 1 ứng dụng.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-center text-xs sm:text-sm">
+          <div class="rounded-2xl bg-white/5 px-3 py-3 border border-white/10">
+            Cảnh báo điểm mù
+          </div>
+          <div class="rounded-2xl bg-white/5 px-3 py-3 border border-white/10">
+            Nhận diện biển báo
+          </div>
+          <div class="rounded-2xl bg-white/5 px-3 py-3 border border-white/10">
+            Cảnh báo mở cửa
+          </div>
+          <div class="rounded-2xl bg-white/5 px-3 py-3 border border-dashed border-white/20 text-zinc-400">
+            ... và còn nữa
+          </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+          <a href="https://github.com/drivesafer/openADAS" target="_blank" rel="noopener noreferrer" class="flex-1 rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-center hover:bg-white/10 transition flex items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+              <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.426 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.009-.866-.014-1.699-2.782.605-3.369-1.343-3.369-1.343-.455-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.004.07 1.532 1.032 1.532 1.032.893 1.53 2.341 1.088 2.91.832.091-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.748-1.026 2.748-1.026.546 1.378.202 2.397.1 2.65.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.31.678.921.678 1.857 0 1.34-.012 2.421-.012 2.75 0 .268.18.58.688.481A10.019 10.019 0 0 0 22 12.017C22 6.484 17.523 2 12 2Z"/>
+            </svg>
+            Đóng góp vào Open-source
+          </a>
+          <a href="https://openadas.io.vn" class="flex-1 rounded-2xl bg-white text-zinc-950 px-4 py-3 text-sm font-semibold text-center hover:opacity-90 transition">
+            Đặt hàng sớm
+          </a>
+        </div>
+
+        <div class="pt-2 border-t border-white/10 text-sm text-zinc-400">
+          Founder: <a href="mailto:ivan@openadas.io.vn" class="text-white hover:underline">ivan@openadas.io.vn</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const counter = document.getElementById('km-counter');
+    let current = 2170;
+    const target = 2177;
+    const step = () => {
+      if (current < target) {
+        current += 1;
+        counter.textContent = current;
+        setTimeout(step, 140);
+      }
+    };
+    window.addEventListener('load', () => {
+      setTimeout(step, 250);
+    });
+  </script>
+</body>
+</html>
