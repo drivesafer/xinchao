@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <title>OpenADAS Showcase App</title>
+
+  <!-- TensorFlow.js + COCO-SSD object detection from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@latest"></script>
+
+  <style>
+    :root {
+      --bg: #020617;
+      --panel: rgba(2, 6, 23, 0.72);
+      --cyan: #22d3ee;
+      --cyan-soft: rgba(34, 211, 238, 0.18);
+      --green: #22c55e;
+      --yellow: #facc15;
+      --red: #ef4444;
+      --white: #f8fafc;
+      --muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--white);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      position: fixed;
+      inset: 0;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      background: radial-gradient(circle at top, #0f172a 0%, #020617 58%);
+      overflow: hidden;
+    }
+
+    video, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    video {
+      object-fit: cover;
+      transform: scaleX(1);
+      background: #000;
+    }
+
+    canvas {
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: absolute;
+      top: max(8px, env(safe-area-inset-top));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .disclaimer {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 10px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 999px;
+      background: rgba(2, 6, 23, 0.58);
+      backdrop-filter: blur(12px);
+      color: rgba(248, 250, 252, 0.84);
+      font-size: clamp(9px, 1.45vw, 12px);
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(34, 211, 238, 0.42);
+      border-radius: 999px;
+      background: rgba(2, 6, 23, 0.72);
+      box-shadow: 0 0 24px rgba(34, 211, 238, 0.15);
+      color: var(--cyan);
+      font-weight: 800;
+      font-size: clamp(11px, 1.7vw, 14px);
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 14px var(--green);
+      animation: pulse 1.25s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.45; transform: scale(0.85); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    .left-hud {
+      position: absolute;
+      left: max(12px, env(safe-area-inset-left));
+      top: 52%;
+      transform: translateY(-50%);
+      z-index: 9;
+      display: grid;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .metric {
+      width: clamp(82px, 14vw, 132px);
+      padding: 10px 11px;
+      border: 1px solid rgba(34, 211, 238, 0.23);
+      border-radius: 16px;
+      background: rgba(2, 6, 23, 0.55);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.24);
+    }
+
+    .metric .label {
+      font-size: clamp(8px, 1.25vw, 10px);
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 2px;
+    }
+
+    .metric .value {
+      font-size: clamp(18px, 3.6vw, 32px);
+      font-weight: 850;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+    }
+
+    .metric .unit {
+      font-size: clamp(9px, 1.4vw, 12px);
+      color: var(--cyan);
+      margin-left: 2px;
+    }
+
+    .right-alerts {
+      position: absolute;
+      top: 64px;
+      right: max(12px, env(safe-area-inset-right));
+      z-index: 11;
+      width: min(330px, 38vw);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .alert {
+      border-radius: 18px;
+      padding: 11px 12px;
+      background: rgba(2, 6, 23, 0.76);
+      border: 1px solid rgba(250, 204, 21, 0.38);
+      box-shadow: 0 16px 52px rgba(0,0,0,0.36), inset 0 0 22px rgba(250, 204, 21, 0.08);
+      backdrop-filter: blur(12px);
+      animation: slideIn 280ms ease-out;
+    }
+
+    .alert.danger {
+      border-color: rgba(239, 68, 68, 0.55);
+      box-shadow: 0 16px 52px rgba(0,0,0,0.36), inset 0 0 24px rgba(239, 68, 68, 0.11);
+    }
+
+    .alert.safe {
+      border-color: rgba(34, 211, 238, 0.4);
+      box-shadow: 0 16px 52px rgba(0,0,0,0.36), inset 0 0 24px rgba(34, 211, 238, 0.08);
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(18px) scale(0.98); }
+      to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+
+    .alert-title {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-weight: 850;
+      font-size: clamp(11px, 1.7vw, 15px);
+      margin-bottom: 3px;
+    }
+
+    .alert-copy {
+      color: rgba(226, 232, 240, 0.84);
+      font-size: clamp(9px, 1.3vw, 12px);
+      line-height: 1.25;
+    }
+
+    .bottom-console {
+      position: absolute;
+      left: max(12px, env(safe-area-inset-left));
+      right: max(12px, env(safe-area-inset-right));
+      bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 12;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      align-items: center;
+      min-width: 0;
+      pointer-events: none;
+    }
+
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(2, 6, 23, 0.64);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      backdrop-filter: blur(10px);
+      color: rgba(248,250,252,0.88);
+      font-size: clamp(9px, 1.35vw, 12px);
+      white-space: nowrap;
+    }
+
+    .chip.hot {
+      border-color: rgba(239,68,68,0.45);
+      color: #fecaca;
+    }
+
+    .chip.ok {
+      border-color: rgba(34,197,94,0.38);
+      color: #bbf7d0;
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      pointer-events: auto;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(34, 211, 238, 0.92);
+      color: #06202a;
+      font-weight: 850;
+      font-size: clamp(11px, 1.6vw, 14px);
+      box-shadow: 0 8px 30px rgba(34, 211, 238, 0.22);
+    }
+
+    button.secondary {
+      background: rgba(15, 23, 42, 0.78);
+      color: var(--white);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: none;
+    }
+
+    .start-screen {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.16), transparent 26%),
+        radial-gradient(circle at 80% 70%, rgba(37, 99, 235, 0.18), transparent 30%),
+        #020617;
+    }
+
+    .start-card {
+      width: min(720px, 92vw);
+      border: 1px solid rgba(34, 211, 238, 0.24);
+      border-radius: 28px;
+      padding: clamp(22px, 4vw, 36px);
+      background: rgba(15, 23, 42, 0.72);
+      box-shadow: 0 30px 100px rgba(0,0,0,0.42);
+      backdrop-filter: blur(18px);
+      text-align: center;
+    }
+
+    .start-card h1 {
+      margin: 0 0 8px;
+      font-size: clamp(30px, 7vw, 64px);
+      letter-spacing: -0.06em;
+      line-height: 0.92;
+    }
+
+    .start-card p {
+      margin: 0 auto 18px;
+      max-width: 620px;
+      color: rgba(226,232,240,0.8);
+      line-height: 1.45;
+      font-size: clamp(13px, 2vw, 17px);
+    }
+
+    .start-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .orientation-note {
+      margin-top: 14px;
+      color: rgba(148,163,184,0.84);
+      font-size: clamp(11px, 1.8vw, 13px);
+    }
+
+    .portrait-warning {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      background: rgba(2, 6, 23, 0.94);
+      color: var(--white);
+      place-items: center;
+      text-align: center;
+      padding: 26px;
+    }
+
+    .portrait-warning div {
+      max-width: 360px;
+    }
+
+    .portrait-warning .icon {
+      font-size: 54px;
+      margin-bottom: 10px;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (orientation: portrait) and (max-width: 900px) {
+      .portrait-warning { display: grid; }
+    }
+
+    @media (max-width: 760px) and (orientation: landscape) {
+      .right-alerts {
+        width: 36vw;
+        top: 50px;
+      }
+      .left-hud {
+        gap: 6px;
+      }
+      .metric {
+        padding: 8px 9px;
+        border-radius: 14px;
+      }
+      .controls button {
+        padding: 8px 11px;
+      }
+      .chip {
+        padding: 6px 8px;
+      }
+      .disclaimer {
+        max-width: 55vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <video id="camera" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+
+    <div class="topbar">
+      <div class="disclaimer">
+        Showcase mode — Demo mô phỏng trải nghiệm OpenADAS trên web. Bản lắp xe thật sẽ được tune & customize theo từng xe, camera và điều kiện vận hành.
+      </div>
+      <div class="brand-pill"><span class="pulse-dot"></span> OPENADAS ACTIVE</div>
+    </div>
+
+    <div class="left-hud">
+      <div class="metric">
+        <div class="label">Speed</div>
+        <div><span class="value" id="speedValue">42</span><span class="unit">km/h</span></div>
+      </div>
+      <div class="metric">
+        <div class="label">Distance</div>
+        <div><span class="value" id="distanceValue">--</span><span class="unit">m</span></div>
+      </div>
+      <div class="metric">
+        <div class="label">Risk</div>
+        <div><span class="value" id="riskValue">LOW</span></div>
+      </div>
+    </div>
+
+    <div class="right-alerts" id="alerts"></div>
+
+    <div class="bottom-console">
+      <div class="status-strip">
+        <div class="chip ok" id="modelChip">AI MODEL: LOADING</div>
+        <div class="chip" id="objectChip">OBJECTS: 0</div>
+        <div class="chip" id="fpsChip">FPS: --</div>
+        <div class="chip" id="modeChip">MODE: CAMERA SHOWCASE</div>
+      </div>
+      <div class="controls">
+        <button class="secondary" id="flipBtn">Flip</button>
+        <button class="secondary" id="alertBtn">Test Alert</button>
+        <button id="startBtnSmall">Start</button>
+      </div>
+    </div>
+
+    <div class="start-screen" id="startScreen">
+      <div class="start-card">
+        <h1>OpenADAS<br/>Showcase</h1>
+        <p>
+          Xoay ngang điện thoại/iPad, bấm Start Camera, rồi soi camera vào màn hình đang chiếu video dashcam. Web sẽ phủ HUD ADAS, bounding box, lane overlay và cảnh báo mô phỏng lên hình ảnh camera.
+        </p>
+        <div class="start-actions">
+          <button id="startBtn">Start Camera</button>
+          <button class="secondary" id="demoAlertBtn">Preview Alert</button>
+        </div>
+        <div class="orientation-note">Khuyến nghị: dùng Chrome/Edge Android hoặc Safari iPadOS, mở qua HTTPS hoặc localhost.</div>
+      </div>
+    </div>
+
+    <div class="portrait-warning">
+      <div>
+        <div class="icon">↻</div>
+        <h2>Hãy xoay ngang thiết bị</h2>
+        <p>Phiên bản showcase này được tối ưu cho điện thoại/iPad landscape để giống màn hình ADAS trên xe.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+
+    const startScreen = document.getElementById('startScreen');
+    const startBtn = document.getElementById('startBtn');
+    const startBtnSmall = document.getElementById('startBtnSmall');
+    const flipBtn = document.getElementById('flipBtn');
+    const alertBtn = document.getElementById('alertBtn');
+    const demoAlertBtn = document.getElementById('demoAlertBtn');
+
+    const alertsEl = document.getElementById('alerts');
+    const modelChip = document.getElementById('modelChip');
+    const objectChip = document.getElementById('objectChip');
+    const fpsChip = document.getElementById('fpsChip');
+    const riskValue = document.getElementById('riskValue');
+    const speedValue = document.getElementById('speedValue');
+    const distanceValue = document.getElementById('distanceValue');
+
+    let model = null;
+    let stream = null;
+    let facingMode = 'environment';
+    let predictions = [];
+    let running = false;
+    let lastDetect = 0;
+    let lastFrame = performance.now();
+    let frameCount = 0;
+    let fps = 0;
+    let lastAlertAt = 0;
+    let demoStart = performance.now();
+
+    const targetClasses = new Set(['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'person', 'traffic light']);
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(window.innerWidth * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
+    resizeCanvas();
+
+    async function loadModel() {
+      try {
+        modelChip.textContent = 'AI MODEL: LOADING';
+        model = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+        modelChip.textContent = 'AI MODEL: READY';
+        modelChip.classList.add('ok');
+      } catch (error) {
+        modelChip.textContent = 'AI MODEL: ERROR';
+        console.error(error);
+        pushAlert('⚠️', 'Không tải được model', 'Kiểm tra mạng/CDN rồi refresh lại trang.', 'danger');
+      }
+    }
+
+    async function startCamera() {
+      try {
+        if (!model) loadModel();
+
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+
+        const constraints = {
+          audio: false,
+          video: {
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 }
+          }
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await video.play();
+        running = true;
+        startScreen.classList.add('hidden');
+        demoStart = performance.now();
+        pushAlert('✅', 'Camera showcase ready', 'Soi camera vào màn hình dashcam để xem overlay OpenADAS.', 'safe');
+        requestAnimationFrame(loop);
+      } catch (error) {
+        console.error(error);
+        pushAlert('⚠️', 'Không mở được camera', 'Hãy mở bằng HTTPS/localhost và cấp quyền camera cho trình duyệt.', 'danger');
+      }
+    }
+
+    function flipCamera() {
+      facingMode = facingMode === 'environment' ? 'user' : 'environment';
+      startCamera();
+    }
+
+    async function detectObjects(now) {
+      if (!model || !running || video.readyState < 2) return;
+      if (now - lastDetect < 180) return;
+      lastDetect = now;
+
+      try {
+        const raw = await model.detect(video, 12, 0.42);
+        predictions = raw.filter(p => targetClasses.has(p.class));
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    function getVideoDrawRect() {
+      const vw = video.videoWidth || 1280;
+      const vh = video.videoHeight || 720;
+      const cw = window.innerWidth;
+      const ch = window.innerHeight;
+      const videoRatio = vw / vh;
+      const canvasRatio = cw / ch;
+
+      let drawW, drawH, offsetX, offsetY;
+      if (canvasRatio > videoRatio) {
+        drawW = cw;
+        drawH = cw / videoRatio;
+        offsetX = 0;
+        offsetY = (ch - drawH) / 2;
+      } else {
+        drawH = ch;
+        drawW = ch * videoRatio;
+        offsetX = (cw - drawW) / 2;
+        offsetY = 0;
+      }
+      return { drawW, drawH, offsetX, offsetY, vw, vh };
+    }
+
+    function mapBox(box) {
+      const { drawW, drawH, offsetX, offsetY, vw, vh } = getVideoDrawRect();
+      const [x, y, w, h] = box;
+      return {
+        x: offsetX + x / vw * drawW,
+        y: offsetY + y / vh * drawH,
+        w: w / vw * drawW,
+        h: h / vh * drawH
+      };
+    }
+
+    function drawRoadOverlay(now) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      const horizonY = h * 0.48;
+      const bottomY = h * 0.98;
+      const centerX = w * 0.5;
+
+      ctx.save();
+
+      // Fixed lower-half drivable area. No animation, no drift.
+      const grd = ctx.createLinearGradient(0, horizonY, 0, bottomY);
+      grd.addColorStop(0, 'rgba(34, 211, 238, 0.02)');
+      grd.addColorStop(0.65, 'rgba(34, 211, 238, 0.12)');
+      grd.addColorStop(1, 'rgba(34, 211, 238, 0.24)');
+
+      ctx.beginPath();
+      ctx.moveTo(centerX - w * 0.08, horizonY);
+      ctx.lineTo(centerX + w * 0.08, horizonY);
+      ctx.lineTo(centerX + w * 0.38, bottomY);
+      ctx.lineTo(centerX - w * 0.38, bottomY);
+      ctx.closePath();
+      ctx.fillStyle = grd;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.48)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Static lane lines attached to lower half of the screen.
+      drawLaneLine(centerX - w * 0.13, horizonY, centerX - w * 0.30, bottomY, false);
+      drawLaneLine(centerX + w * 0.13, horizonY, centerX + w * 0.30, bottomY, false);
+      drawLaneLine(centerX, horizonY + 10, centerX, bottomY, true);
+
+      // Fixed collision risk zone.
+      ctx.beginPath();
+      ctx.roundRect(w * 0.39, h * 0.58, w * 0.22, h * 0.32, 18);
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      ctx.setLineDash([8, 8]);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.restore();
+    }
+
+    function drawLaneLine(x1, y1, x2, y2, dashed) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineWidth = dashed ? 2 : 3;
+      ctx.strokeStyle = dashed ? 'rgba(248, 250, 252, 0.48)' : 'rgba(34, 211, 238, 0.78)';
+      ctx.shadowColor = 'rgba(34, 211, 238, 0.7)';
+      ctx.shadowBlur = 12;
+      if (dashed) ctx.setLineDash([14, 18]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBoxes() {
+      let nearestRisk = 0;
+      let nearestDistance = null;
+
+      predictions.forEach(pred => {
+        const b = mapBox(pred.bbox);
+        const cx = b.x + b.w / 2;
+        const cy = b.y + b.h / 2;
+        const areaRatio = (b.w * b.h) / (window.innerWidth * window.innerHeight);
+        const inDangerZone = cx > window.innerWidth * 0.38 && cx < window.innerWidth * 0.62 && cy > window.innerHeight * 0.54;
+        const risk = Math.min(1, areaRatio * 10 + (inDangerZone ? 0.42 : 0));
+        nearestRisk = Math.max(nearestRisk, risk);
+
+        const approxDistance = Math.max(4, Math.round(42 - areaRatio * 280));
+        if (nearestDistance === null || approxDistance < nearestDistance) nearestDistance = approxDistance;
+
+        const isTrafficLight = pred.class === 'traffic light';
+        const isDanger = !isTrafficLight && risk > 0.66;
+
+        const strokeColor = isTrafficLight
+          ? 'rgba(248, 250, 252, 0.96)'
+          : isDanger
+            ? 'rgba(239, 68, 68, 0.98)'
+            : 'rgba(34, 211, 238, 0.88)';
+        const fillColor = isTrafficLight
+          ? 'rgba(248, 250, 252, 0.08)'
+          : isDanger
+            ? 'rgba(239, 68, 68, 0.22)'
+            : 'rgba(34, 211, 238, 0.08)';
+
+        ctx.save();
+        ctx.lineWidth = Math.max(2, window.innerWidth * 0.003);
+        ctx.strokeStyle = strokeColor;
+        ctx.fillStyle = fillColor;
+        ctx.shadowColor = strokeColor;
+        ctx.shadowBlur = isDanger || isTrafficLight ? 14 : 8;
+        ctx.beginPath();
+        ctx.roundRect(b.x, b.y, b.w, b.h, 9);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // No object labels for normal detections. Traffic light is the only labeled class.
+        if (isTrafficLight) {
+          const label = 'đèn giao thông';
+          ctx.font = `750 ${Math.max(11, window.innerWidth * 0.015)}px Inter, system-ui`;
+          const textW = ctx.measureText(label).width;
+          const labelH = Math.max(24, window.innerHeight * 0.038);
+          ctx.fillStyle = 'rgba(2, 6, 23, 0.78)';
+          ctx.strokeStyle = 'rgba(248, 250, 252, 0.85)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(b.x, Math.max(8, b.y - labelH - 4), textW + 18, labelH, 8);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#f8fafc';
+          ctx.fillText(label, b.x + 9, Math.max(24, b.y - 12));
+        }
+
+        ctx.restore();
+      });
+
+      objectChip.textContent = `OBJECTS: ${predictions.length}`;
+      const speed = Math.round(38 + Math.sin(performance.now() / 1400) * 5 + predictions.length * 0.7);
+      speedValue.textContent = String(speed);
+
+      if (nearestDistance !== null) distanceValue.textContent = String(nearestDistance);
+      else distanceValue.textContent = '--';
+
+      if (nearestRisk > 0.66) {
+        riskValue.textContent = 'HIGH';
+        maybeTriggerDetectionAlert(nearestRisk);
+      } else if (nearestRisk > 0.38) {
+        riskValue.textContent = 'MED';
+      } else {
+        riskValue.textContent = 'LOW';
+      }
+    }
+
+    function maybeTriggerDetectionAlert(risk) {
+      const now = performance.now();
+      if (now - lastAlertAt < 2800) return;
+      lastAlertAt = now;
+
+      const hasPerson = predictions.some(p => p.class === 'person');
+      const hasMotorbike = predictions.some(p => p.class === 'motorcycle' || p.class === 'bicycle');
+      const hasVehicle = predictions.some(p => ['car','truck','bus'].includes(p.class));
+
+      if (hasPerson) {
+        pushAlert('🚶', 'Pedestrian Warning', 'Phát hiện người đi bộ trong vùng rủi ro phía trước.', 'danger');
+      } else if (hasMotorbike) {
+        pushAlert('🛵', 'Motorcycle Risk', 'Xe máy/xe đạp đi vào vùng cần chú ý. Giữ khoảng cách an toàn.', 'danger');
+      } else if (hasVehicle) {
+        pushAlert('⚠️', 'Forward Collision Warning', 'Phương tiện phía trước đang ở khoảng cách nguy hiểm.', 'danger');
+      } else if (risk > 0.66) {
+        pushAlert('⚠️', 'ADAS Warning', 'Phát hiện vật thể trong vùng rủi ro phía trước.', 'danger');
+      }
+    }
+
+    function triggerScriptedAlerts(now) {
+      const elapsed = ((now - demoStart) / 1000) % 24;
+      if (now - lastAlertAt < 2600) return;
+
+      if (elapsed > 5.0 && elapsed < 5.25) {
+        lastAlertAt = now;
+        pushAlert('🚦', 'Speed Sign Detected', 'Giới hạn tốc độ mô phỏng: 50 km/h.', 'safe');
+      }
+      if (elapsed > 11.0 && elapsed < 11.25) {
+        lastAlertAt = now;
+        pushAlert('↗️', 'Lane Departure Warning', 'Xe có dấu hiệu lệch khỏi vùng làn đường an toàn.', 'danger');
+      }
+      if (elapsed > 18.0 && elapsed < 18.25) {
+        lastAlertAt = now;
+        pushAlert('🌙', 'Driver Attention', 'Showcase alert: nhắc tài xế duy trì tập trung.', 'safe');
+      }
+    }
+
+    function pushAlert(icon, title, copy, type = '') {
+      const alert = document.createElement('div');
+      alert.className = `alert ${type}`;
+      alert.innerHTML = `
+        <div class="alert-title"><span>${icon}</span><span>${title}</span></div>
+        <div class="alert-copy">${copy}</div>
+      `;
+      alertsEl.prepend(alert);
+      while (alertsEl.children.length > 3) {
+        alertsEl.removeChild(alertsEl.lastChild);
+      }
+      setTimeout(() => {
+        alert.style.opacity = '0';
+        alert.style.transform = 'translateX(18px) scale(0.98)';
+        alert.style.transition = 'all 260ms ease';
+        setTimeout(() => alert.remove(), 300);
+      }, 4200);
+    }
+
+    function updateFPS(now) {
+      frameCount += 1;
+      if (now - lastFrame >= 1000) {
+        fps = Math.round(frameCount * 1000 / (now - lastFrame));
+        fpsChip.textContent = `FPS: ${fps}`;
+        frameCount = 0;
+        lastFrame = now;
+      }
+    }
+
+    async function loop(now) {
+      if (!running) return;
+      updateFPS(now);
+      await detectObjects(now);
+
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+      drawRoadOverlay(now);
+      drawBoxes();
+      triggerScriptedAlerts(now);
+
+      requestAnimationFrame(loop);
+    }
+
+    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+      loadModel();
+    } else {
+      modelChip.textContent = 'CAMERA: UNSUPPORTED';
+      pushAlert('⚠️', 'Browser không hỗ trợ camera', 'Hãy thử Chrome/Edge/Safari bản mới hơn.', 'danger');
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    startBtnSmall.addEventListener('click', startCamera);
+    flipBtn.addEventListener('click', flipCamera);
+    alertBtn.addEventListener('click', () => pushAlert('⚠️', 'Forward Collision Warning', 'Phương tiện phía trước đang ở khoảng cách nguy hiểm.', 'danger'));
+    demoAlertBtn.addEventListener('click', () => pushAlert('🛵', 'Motorcycle Risk', 'Xe máy cắt ngang vùng quan sát phía trước.', 'danger'));
+
+    // Small helper for older Safari versions that may not support roundRect.
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        this.moveTo(x + radius, y);
+        this.arcTo(x + w, y, x + w, y + h, radius);
+        this.arcTo(x + w, y + h, x, y + h, radius);
+        this.arcTo(x, y + h, x, y, radius);
+        this.arcTo(x, y, x + w, y, radius);
+        return this;
+      };
+    }
+  </script>
+</body>
+</html>
