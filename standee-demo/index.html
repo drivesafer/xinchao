@@ -25,9 +25,9 @@
       }
 
       /*
-        Quan trọng:
-        Không ép video/canvas width:100vw height:100vh object-fit:cover.
-        Nếu ép, mobile sẽ bị lệch hệ tọa độ giữa camera feed và tracking.
+        CỰC KỲ QUAN TRỌNG:
+        Không set video/canvas width: 100vw, height: 100vh, object-fit: cover.
+        Làm vậy sẽ hiện camera nhưng lệch tracking trên mobile.
       */
 
       a-scene {
@@ -35,12 +35,20 @@
         inset: 0 !important;
         width: 100% !important;
         height: 100% !important;
+        z-index: 1 !important;
         background: transparent !important;
       }
 
       canvas,
       .a-canvas {
         background: transparent !important;
+      }
+
+      video {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        background: #000 !important;
       }
 
       #ui {
@@ -145,7 +153,6 @@
         display: block;
       }
 
-      .mindar-ui-overlay,
       .mindar-ui-loading,
       .mindar-ui-scanning,
       .mindar-ui-compatibility {
@@ -161,25 +168,65 @@
         scale: 1.0,
       };
 
-      AFRAME.registerComponent("transparent-renderer", {
+      AFRAME.registerComponent("camera-layer-fix", {
         init: function () {
           const scene = this.el;
 
           const apply = () => {
-            if (!scene.renderer) return;
+            if (scene.object3D) {
+              scene.object3D.background = null;
+            }
 
-            scene.renderer.setClearColor(0x000000, 0);
-            scene.renderer.setClearAlpha(0);
+            if (scene.renderer) {
+              scene.renderer.setClearColor(0x000000, 0);
+              scene.renderer.setClearAlpha(0);
+            }
 
             if (scene.canvas) {
-              scene.canvas.style.background = "transparent";
+              scene.canvas.style.setProperty("background", "transparent", "important");
             }
+
+            document.querySelectorAll("canvas").forEach((canvas) => {
+              canvas.style.setProperty("background", "transparent", "important");
+            });
+
+            document.querySelectorAll("video").forEach((video) => {
+              video.setAttribute("playsinline", "");
+              video.setAttribute("webkit-playsinline", "");
+
+              video.style.setProperty("display", "block", "important");
+              video.style.setProperty("visibility", "visible", "important");
+              video.style.setProperty("opacity", "1", "important");
+              video.style.setProperty("z-index", "0", "important");
+
+              /*
+                Không chỉnh width, height, transform, objectFit.
+                Chỉ sửa position nếu browser để static khiến z-index không có tác dụng.
+              */
+              const computed = window.getComputedStyle(video);
+              if (computed.position === "static") {
+                video.style.setProperty("position", "absolute", "important");
+              }
+            });
           };
 
+          scene.addEventListener("loaded", apply);
           scene.addEventListener("renderstart", apply);
+          scene.addEventListener("arReady", apply);
+
           setTimeout(apply, 100);
           setTimeout(apply, 500);
-          setTimeout(apply, 1000);
+          setTimeout(apply, 1200);
+
+          const observer = new MutationObserver(apply);
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["style", "class"],
+          });
+
+          setInterval(apply, 1000);
         },
       });
 
@@ -236,7 +283,7 @@
         };
 
         const setSearching = () => {
-          status.textContent = "Đang quét tình huống / Scanning";
+          status.textContent = "Đang quét / Scanning";
           status.classList.remove("detected");
           message.classList.remove("hidden");
         };
@@ -251,11 +298,6 @@
 
         scene.addEventListener("arReady", () => {
           status.textContent = "Camera đã sẵn sàng / Camera ready";
-
-          if (scene.renderer) {
-            scene.renderer.setClearColor(0x000000, 0);
-            scene.renderer.setClearAlpha(0);
-          }
         });
 
         scene.addEventListener("arError", () => {
@@ -282,8 +324,9 @@
 
   <body>
     <a-scene
-      transparent-renderer
-      mindar-image="imageTargetSrc: ./src/image.mind; autoStart: true; filterMinCF: 0.0001; filterBeta: 10; warmupTolerance: 2; missTolerance: 5"
+      embedded
+      camera-layer-fix
+      mindar-image="imageTargetSrc: ./src/image.mind; autoStart: true; uiLoading: no; uiScanning: no; uiError: no; filterMinCF: 0.0001; filterBeta: 10; warmupTolerance: 2; missTolerance: 5"
       renderer="alpha: true; antialias: true; colorManagement: true; physicallyCorrectLights: true"
       color-space="sRGB"
       vr-mode-ui="enabled: false"
