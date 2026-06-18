@@ -19,47 +19,34 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: transparent;
+        background: #000;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
           sans-serif;
       }
 
-      video {
-        position: fixed !important;
-        inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        object-fit: cover !important;
-        z-index: 0 !important;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        background: #000 !important;
-      }
+      /*
+        Quan trọng:
+        Không ép video/canvas width:100vw height:100vh object-fit:cover.
+        Nếu ép, mobile sẽ bị lệch hệ tọa độ giữa camera feed và tracking.
+      */
 
       a-scene {
         position: fixed !important;
         inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 1 !important;
+        width: 100% !important;
+        height: 100% !important;
         background: transparent !important;
       }
 
       canvas,
       .a-canvas {
-        position: fixed !important;
-        inset: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        z-index: 1 !important;
         background: transparent !important;
       }
 
       #ui {
         position: fixed;
         inset: 0;
-        z-index: 10;
+        z-index: 9999;
         pointer-events: none;
         display: flex;
         flex-direction: column;
@@ -77,27 +64,27 @@
       }
 
       .brand {
-        color: #fff;
+        color: white;
         font-size: 18px;
-        font-weight: 800;
+        font-weight: 850;
         letter-spacing: -0.2px;
-        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.85);
+        text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
       }
 
       .status {
         padding: 10px 16px;
         border-radius: 999px;
         background: rgba(0, 0, 0, 0.62);
-        color: #fff;
+        color: white;
         font-size: 14px;
-        font-weight: 700;
-        backdrop-filter: blur(10px);
+        font-weight: 750;
         white-space: nowrap;
-        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
       }
 
       .status.detected {
-        background: rgba(0, 126, 76, 0.9);
+        background: rgba(0, 126, 76, 0.92);
       }
 
       .center-message {
@@ -107,10 +94,10 @@
         padding: 20px 20px;
         border-radius: 24px;
         background: rgba(0, 0, 0, 0.62);
-        color: #fff;
+        color: white;
         text-align: center;
         backdrop-filter: blur(14px);
-        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.38);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.42);
       }
 
       .center-message.hidden {
@@ -136,7 +123,7 @@
         text-align: center;
         font-size: 13px;
         line-height: 1.4;
-        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.88);
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
       }
 
       #error {
@@ -145,11 +132,11 @@
         left: 16px;
         right: 16px;
         bottom: max(16px, env(safe-area-inset-bottom));
-        z-index: 30;
+        z-index: 10000;
         padding: 14px 16px;
         border-radius: 16px;
-        color: #fff;
-        background: rgba(170, 0, 0, 0.9);
+        color: white;
+        background: rgba(170, 0, 0, 0.92);
         font-size: 13px;
         line-height: 1.45;
       }
@@ -167,16 +154,22 @@
     </style>
 
     <script>
+      const OVERLAY_CONFIG = {
+        x: 0,
+        y: 0,
+        z: 0.02,
+        scale: 1.0,
+      };
+
       AFRAME.registerComponent("transparent-renderer", {
         init: function () {
           const scene = this.el;
 
           const apply = () => {
-            if (scene.renderer) {
-              scene.renderer.setClearColor(0x000000, 0);
-              scene.renderer.setClearAlpha(0);
-              scene.renderer.autoClear = true;
-            }
+            if (!scene.renderer) return;
+
+            scene.renderer.setClearColor(0x000000, 0);
+            scene.renderer.setClearAlpha(0);
 
             if (scene.canvas) {
               scene.canvas.style.background = "transparent";
@@ -184,7 +177,8 @@
           };
 
           scene.addEventListener("renderstart", apply);
-          setTimeout(apply, 300);
+          setTimeout(apply, 100);
+          setTimeout(apply, 500);
           setTimeout(apply, 1000);
         },
       });
@@ -202,10 +196,23 @@
             const w = targetImage.naturalWidth;
             const h = targetImage.naturalHeight;
 
-            if (!w || !h) return;
+            if (!w || !h) {
+              console.warn("Cannot read src/image.png size.");
+              return;
+            }
 
             overlay.setAttribute("width", 1);
             overlay.setAttribute("height", h / w);
+
+            overlay.setAttribute(
+              "position",
+              `${OVERLAY_CONFIG.x} ${OVERLAY_CONFIG.y} ${OVERLAY_CONFIG.z}`
+            );
+
+            overlay.setAttribute(
+              "scale",
+              `${OVERLAY_CONFIG.scale} ${OVERLAY_CONFIG.scale} ${OVERLAY_CONFIG.scale}`
+            );
           };
 
           if (targetImage.complete) {
@@ -215,37 +222,6 @@
           }
         },
       });
-
-      function forceCameraPreviewVisible() {
-        const videos = document.querySelectorAll("video");
-
-        videos.forEach((video) => {
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-
-          video.style.position = "fixed";
-          video.style.inset = "0";
-          video.style.width = "100vw";
-          video.style.height = "100vh";
-          video.style.objectFit = "cover";
-          video.style.zIndex = "0";
-          video.style.display = "block";
-          video.style.visibility = "visible";
-          video.style.opacity = "1";
-          video.style.background = "#000";
-        });
-
-        const canvases = document.querySelectorAll("canvas");
-
-        canvases.forEach((canvas) => {
-          canvas.style.position = "fixed";
-          canvas.style.inset = "0";
-          canvas.style.width = "100vw";
-          canvas.style.height = "100vh";
-          canvas.style.zIndex = "1";
-          canvas.style.background = "transparent";
-        });
-      }
 
       window.addEventListener("DOMContentLoaded", () => {
         const scene = document.querySelector("a-scene");
@@ -260,7 +236,7 @@
         };
 
         const setSearching = () => {
-          status.textContent = "Đang quét / Scanning";
+          status.textContent = "Đang quét tình huống / Scanning";
           status.classList.remove("detected");
           message.classList.remove("hidden");
         };
@@ -273,22 +249,13 @@
 
         setSearching();
 
-        const observer = new MutationObserver(() => {
-          forceCameraPreviewVisible();
-        });
-
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["style", "class"],
-        });
-
-        setInterval(forceCameraPreviewVisible, 500);
-
         scene.addEventListener("arReady", () => {
           status.textContent = "Camera đã sẵn sàng / Camera ready";
-          forceCameraPreviewVisible();
+
+          if (scene.renderer) {
+            scene.renderer.setClearColor(0x000000, 0);
+            scene.renderer.setClearAlpha(0);
+          }
         });
 
         scene.addEventListener("arError", () => {
@@ -317,8 +284,8 @@
     <a-scene
       transparent-renderer
       mindar-image="imageTargetSrc: ./src/image.mind; autoStart: true; filterMinCF: 0.0001; filterBeta: 10; warmupTolerance: 2; missTolerance: 5"
-      color-space="sRGB"
       renderer="alpha: true; antialias: true; colorManagement: true; physicallyCorrectLights: true"
+      color-space="sRGB"
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false"
       loading-screen="enabled: false"
@@ -332,8 +299,8 @@
 
       <a-entity id="standeeTarget" mindar-image-target="targetIndex: 0">
         <a-image
+          id="overlayPlane"
           src="#overlayImage"
-          position="0 0 0.02"
           rotation="0 0 0"
           fit-overlay-to-target="targetImage: #targetImage"
           material="transparent: true; opacity: 1; alphaTest: 0.01; side: double"
