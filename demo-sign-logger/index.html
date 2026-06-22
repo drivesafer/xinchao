@@ -1,0 +1,1145 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>OpenADAS Traffic Sign Logger - Stable No Worker</title>
+
+  <style>
+    :root {
+      --panel-w: min(36vw, 410px);
+      --bg: #05070b;
+      --panel: rgba(8, 12, 20, 0.86);
+      --line: rgba(255,255,255,0.14);
+      --text: #f4f7fb;
+      --muted: rgba(244,247,251,0.66);
+      --good: #29e37d;
+      --warn: #ffcc33;
+      --bad: #ff4d4d;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #video {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+      width: 1px;
+      height: 1px;
+    }
+
+    #canvas {
+      position: absolute;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+
+    #hud {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 4;
+      max-width: calc(100vw - var(--panel-w) - 40px);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.52);
+      backdrop-filter: blur(8px);
+      font-size: 13px;
+      line-height: 1.2;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--warn);
+      flex: 0 0 auto;
+    }
+
+    .dot.ok { background: var(--good); }
+    .dot.err { background: var(--bad); }
+
+    #panel {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: var(--panel-w);
+      height: 100%;
+      z-index: 5;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      padding-top: max(12px, env(safe-area-inset-top));
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+
+    #panel h1 {
+      margin: 0 0 4px;
+      font-size: 16px;
+    }
+
+    #panel .sub {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    #activeSigns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+      min-height: 30px;
+    }
+
+    .sign-chip {
+      border: 1px solid rgba(41,227,125,0.45);
+      background: rgba(41,227,125,0.12);
+      color: #caffdf;
+      border-radius: 999px;
+      padding: 6px 8px;
+      font-size: 12px;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    #logWrap {
+      flex: 1;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.22);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+
+    th, td {
+      padding: 8px 7px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(10,14,24,0.96);
+      color: rgba(255,255,255,0.72);
+      font-weight: 700;
+    }
+
+    td.sign {
+      font-weight: 700;
+      color: #fff;
+      max-width: 130px;
+      word-break: break-word;
+    }
+
+    td.small {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .active-row td {
+      background: rgba(41,227,125,0.08);
+    }
+
+    .empty {
+      padding: 18px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    #startOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      place-items: center;
+      background: rgba(0,0,0,0.72);
+      padding: 24px;
+      text-align: center;
+    }
+
+    #startCard {
+      width: min(520px, 92vw);
+      border: 1px solid var(--line);
+      background: rgba(12,16,26,0.95);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+    }
+
+    #startCard h2 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    #startCard p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    #startBtn {
+      font-size: 15px;
+      padding: 12px 18px;
+      border-radius: 14px;
+      background: rgba(41,227,125,0.18);
+      border-color: rgba(41,227,125,0.5);
+      color: #d9ffe8;
+    }
+
+    #rotateHint {
+      display: none;
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 8;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,204,51,0.16);
+      border: 1px solid rgba(255,204,51,0.35);
+      color: #fff4c2;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (orientation: portrait) {
+      :root { --panel-w: 100vw; }
+
+      #panel {
+        top: auto;
+        bottom: 0;
+        width: 100vw;
+        height: 42vh;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      #hud {
+        max-width: calc(100vw - 24px);
+      }
+
+      #rotateHint { display: block; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+      <div class="pill"><span id="modelDot" class="dot"></span><span id="modelStatus">Đang tải ONNX Runtime...</span></div>
+      <div class="pill"><span id="gpsDot" class="dot"></span><span id="gpsStatus">Đang xin quyền định vị...</span></div>
+      <div class="pill"><span id="perfDot" class="dot"></span><span id="perfStatus">UI FPS: -- | AI FPS: -- | Latency: -- ms</span></div>
+    </div>
+
+    <aside id="panel">
+      <h1>Traffic Sign Log</h1>
+      <div class="sub">Ghi lại biển báo, thời gian và tọa độ lúc bắt đầu / ngừng phát hiện.</div>
+
+      <div id="activeSigns"></div>
+
+      <div id="buttons">
+        <button id="clearBtn">Xóa log</button>
+        <button id="csvBtn">Tải CSV</button>
+      </div>
+
+      <div id="logWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Biển báo</th>
+              <th>Bắt đầu</th>
+              <th>Kết thúc</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+        <div id="emptyLog" class="empty">Chưa có biển báo nào được ghi nhận.</div>
+      </div>
+    </aside>
+
+    <div id="rotateHint">Nên xoay ngang điện thoại để camera + log hiển thị đúng như demo ADAS.</div>
+
+    <div id="startOverlay">
+      <div id="startCard">
+        <h2>Cần chạm để bắt đầu</h2>
+        <p>Một số trình duyệt điện thoại yêu cầu thao tác người dùng trước khi bật camera/GPS.</p>
+        <button id="startBtn">Bật camera & định vị</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const MODEL_URL = "https://huggingface.co/star092304/traffic-sign-detection-vietnam-yolo/resolve/main/best.onnx";
+  const DATA_YAML_URL = "https://huggingface.co/star092304/traffic-sign-detection-vietnam-yolo/resolve/main/data.yaml";
+
+  const CONF_THRESHOLD = 0.38;
+  const IOU_THRESHOLD = 0.45;
+  const LOST_GRACE_MS = 900;
+
+  // Bản no-worker nên để 3-6 FPS cho mobile. Tăng nếu máy khỏe.
+  const TARGET_AI_FPS = 5;
+  const INFER_INTERVAL_MS = 1000 / TARGET_AI_FPS;
+
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const modelDot = document.getElementById("modelDot");
+  const gpsDot = document.getElementById("gpsDot");
+  const perfDot = document.getElementById("perfDot");
+  const modelStatus = document.getElementById("modelStatus");
+  const gpsStatus = document.getElementById("gpsStatus");
+  const perfStatus = document.getElementById("perfStatus");
+  const activeSignsEl = document.getElementById("activeSigns");
+  const logBody = document.getElementById("logBody");
+  const emptyLog = document.getElementById("emptyLog");
+  const clearBtn = document.getElementById("clearBtn");
+  const csvBtn = document.getElementById("csvBtn");
+  const startOverlay = document.getElementById("startOverlay");
+  const startBtn = document.getElementById("startBtn");
+
+  const prepCanvas = document.createElement("canvas");
+  const prepCtx = prepCanvas.getContext("2d", { willReadFrequently: true });
+
+  let session = null;
+  let inputName = null;
+  let outputName = null;
+  let provider = "wasm";
+  let inputSize = 640;
+  let classNames = [];
+
+  let running = false;
+  let inferBusy = false;
+  let lastInferAt = 0;
+  let latestDetections = [];
+  let latestLatency = 0;
+
+  let geo = null;
+
+  let eventId = 0;
+  let logEvents = [];
+  let activeEvents = new Map();
+
+  let frameCounter = 0;
+  let inferCounter = 0;
+  let uiFps = 0;
+  let aiFps = 0;
+  let fpsWindowStart = performance.now();
+
+  function setDot(el, status) {
+    el.classList.remove("ok", "err");
+    if (status === "ok") el.classList.add("ok");
+    if (status === "err") el.classList.add("err");
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = () => resolve(src);
+      s.onerror = () => reject(new Error("Cannot load script: " + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  async function loadOrt() {
+    const candidates = [
+      {
+        script: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/ort.webgpu.min.js",
+        wasmPath: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/",
+        mode: "webgpu"
+      },
+      {
+        script: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.webgpu.min.js",
+        wasmPath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/",
+        mode: "webgpu"
+      },
+      {
+        script: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/ort.min.js",
+        wasmPath: "https://cdnjs.cloudflare.com/ajax/libs/onnxruntime-web/1.23.0/",
+        mode: "wasm"
+      },
+      {
+        script: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.min.js",
+        wasmPath: "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/",
+        mode: "wasm"
+      }
+    ];
+
+    let lastError = null;
+
+    for (const c of candidates) {
+      try {
+        modelStatus.textContent = "Đang tải runtime: " + c.mode;
+
+        await loadScript(c.script);
+
+        if (!window.ort) {
+          throw new Error("window.ort empty");
+        }
+
+        window.ort.env.wasm.wasmPaths = c.wasmPath;
+
+        try {
+          window.ort.env.wasm.numThreads = crossOriginIsolated
+            ? Math.min(4, navigator.hardwareConcurrency || 1)
+            : 1;
+        } catch (_) {}
+
+        try {
+          window.ort.env.wasm.simd = true;
+        } catch (_) {}
+
+        return c.mode;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("Không tải được ONNX Runtime từ CDN.");
+  }
+
+  function resizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(window.innerWidth * dpr);
+    canvas.height = Math.round(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function nowStamp(d = new Date()) {
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function geoSnapshot() {
+    if (!geo) return null;
+    return { lat: geo.lat, lon: geo.lon, acc: geo.acc, ts: geo.ts };
+  }
+
+  function formatGeo(g) {
+    if (!g) return "GPS chưa có";
+    return `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}`;
+  }
+
+  function cleanName(s) {
+    return String(s ?? "")
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .replace(/,$/, "")
+      .trim();
+  }
+
+  function parseDataYaml(text) {
+    const lines = text.split(/\r?\n/);
+    const names = [];
+    let inNames = false;
+
+    for (const raw of lines) {
+      const noComment = raw.replace(/\s+#.*$/, "");
+      const trimmed = noComment.trim();
+      if (!trimmed) continue;
+
+      if (trimmed.startsWith("names:")) {
+        inNames = true;
+        const after = trimmed.slice("names:".length).trim();
+
+        if (after.startsWith("[") && after.endsWith("]")) {
+          return after.slice(1, -1).split(",").map(cleanName).filter(Boolean);
+        }
+
+        continue;
+      }
+
+      if (inNames) {
+        const isIndented = /^\s+/.test(noComment);
+        if (!isIndented) break;
+
+        let m = trimmed.match(/^(\d+)\s*:\s*(.+)$/);
+        if (m) {
+          names[Number(m[1])] = cleanName(m[2]);
+          continue;
+        }
+
+        m = trimmed.match(/^-\s*(.+)$/);
+        if (m) {
+          names.push(cleanName(m[1]));
+        }
+      }
+    }
+
+    return names.filter(x => x !== undefined && x !== "");
+  }
+
+  async function loadClassNames() {
+    try {
+      const res = await fetch(DATA_YAML_URL, { cache: "force-cache" });
+      const text = await res.text();
+      const parsed = parseDataYaml(text);
+      if (parsed.length) return parsed;
+    } catch (err) {
+      console.warn(err);
+    }
+
+    return Array.from({ length: 82 }, (_, i) => "class_" + i);
+  }
+
+  async function initModel() {
+    classNames = await loadClassNames();
+
+    const loadedRuntime = await loadOrt();
+
+    provider = "wasm";
+
+    if (loadedRuntime === "webgpu" && navigator.gpu) {
+      try {
+        modelStatus.textContent = "Đang tạo session WebGPU...";
+        session = await ort.InferenceSession.create(MODEL_URL, {
+          executionProviders: ["webgpu"],
+          graphOptimizationLevel: "all"
+        });
+        provider = "webgpu";
+      } catch (err) {
+        console.warn("WebGPU failed, fallback WASM:", err);
+        session = null;
+      }
+    }
+
+    if (!session) {
+      modelStatus.textContent = "Đang tạo session WASM...";
+      session = await ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: ["wasm"],
+        graphOptimizationLevel: "all"
+      });
+      provider = "wasm";
+    }
+
+    inputName = session.inputNames[0];
+    outputName = session.outputNames[0];
+
+    inputSize = await probeInputSize();
+
+    prepCanvas.width = inputSize;
+    prepCanvas.height = inputSize;
+
+    setDot(modelDot, "ok");
+    modelStatus.textContent =
+      `Model sẵn sàng | ${provider.toUpperCase()} | input ${inputSize} | ${classNames.length} classes`;
+  }
+
+  async function probeInputSize() {
+    const candidates = [512, 640];
+
+    for (const s of candidates) {
+      try {
+        const dummy = new ort.Tensor("float32", new Float32Array(1 * 3 * s * s), [1, 3, s, s]);
+        await session.run({ [inputName]: dummy });
+        return s;
+      } catch (_) {}
+    }
+
+    return 640;
+  }
+
+  async function startCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Trình duyệt không hỗ trợ camera.");
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 640 },
+        height: { ideal: 360 },
+        frameRate: { ideal: 20, max: 24 }
+      }
+    });
+
+    video.srcObject = stream;
+    await video.play();
+
+    return new Promise(resolve => {
+      if (video.videoWidth > 0) resolve();
+      else video.onloadedmetadata = () => resolve();
+    });
+  }
+
+  function startGps() {
+    if (!navigator.geolocation) {
+      setDot(gpsDot, "err");
+      gpsStatus.textContent = "GPS không được trình duyệt hỗ trợ";
+      return;
+    }
+
+    navigator.geolocation.watchPosition(
+      pos => {
+        geo = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          acc: pos.coords.accuracy,
+          ts: Date.now()
+        };
+
+        setDot(gpsDot, "ok");
+        gpsStatus.textContent =
+          `GPS: ${geo.lat.toFixed(6)}, ${geo.lon.toFixed(6)} | ±${Math.round(geo.acc)}m`;
+      },
+      err => {
+        setDot(gpsDot, "err");
+        gpsStatus.textContent = `GPS lỗi: ${err.message}`;
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 800,
+        timeout: 8000
+      }
+    );
+  }
+
+  function getLetterboxMeta(srcW, srcH, size) {
+    const scale = Math.min(size / srcW, size / srcH);
+    const newW = srcW * scale;
+    const newH = srcH * scale;
+    const padX = (size - newW) / 2;
+    const padY = (size - newH) / 2;
+
+    return { scale, newW, newH, padX, padY, srcW, srcH, size };
+  }
+
+  function preprocessFrame() {
+    const meta = getLetterboxMeta(video.videoWidth, video.videoHeight, inputSize);
+
+    prepCtx.fillStyle = "black";
+    prepCtx.fillRect(0, 0, inputSize, inputSize);
+    prepCtx.drawImage(video, meta.padX, meta.padY, meta.newW, meta.newH);
+
+    const imageData = prepCtx.getImageData(0, 0, inputSize, inputSize).data;
+    const input = new Float32Array(1 * 3 * inputSize * inputSize);
+    const plane = inputSize * inputSize;
+
+    for (let i = 0, p = 0; i < imageData.length; i += 4, p++) {
+      input[p] = imageData[i] / 255;
+      input[plane + p] = imageData[i + 1] / 255;
+      input[plane * 2 + p] = imageData[i + 2] / 255;
+    }
+
+    return {
+      tensor: new ort.Tensor("float32", input, [1, 3, inputSize, inputSize]),
+      meta
+    };
+  }
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  function iou(a, b) {
+    const x1 = Math.max(a.x1, b.x1);
+    const y1 = Math.max(a.y1, b.y1);
+    const x2 = Math.min(a.x2, b.x2);
+    const y2 = Math.min(a.y2, b.y2);
+    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    const areaA = Math.max(0, a.x2 - a.x1) * Math.max(0, a.y2 - a.y1);
+    const areaB = Math.max(0, b.x2 - b.x1) * Math.max(0, b.y2 - b.y1);
+    return inter / (areaA + areaB - inter + 1e-6);
+  }
+
+  function nms(dets) {
+    const sorted = dets.sort((a, b) => b.score - a.score);
+    const keep = [];
+
+    while (sorted.length && keep.length < 36) {
+      const best = sorted.shift();
+      keep.push(best);
+
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i].classId === best.classId && iou(best, sorted[i]) > IOU_THRESHOLD) {
+          sorted.splice(i, 1);
+        }
+      }
+    }
+
+    return keep;
+  }
+
+  function parseYoloOutput(outputTensor, meta) {
+    const data = outputTensor.data;
+    const dims = outputTensor.dims;
+
+    if (!dims || dims.length < 3) return [];
+
+    let attrs, count, transposed;
+
+    if (dims[1] < dims[2]) {
+      attrs = dims[1];
+      count = dims[2];
+      transposed = true;
+    } else {
+      count = dims[1];
+      attrs = dims[2];
+      transposed = false;
+    }
+
+    const classCount = classNames.length || Math.max(0, attrs - 4);
+    const hasObjectness = attrs >= classCount + 5;
+    const classOffset = hasObjectness ? 5 : 4;
+    const availableClasses = Math.min(classCount, attrs - classOffset);
+
+    function get(i, a) {
+      return transposed ? data[a * count + i] : data[i * attrs + a];
+    }
+
+    const dets = [];
+
+    for (let i = 0; i < count; i++) {
+      let cx = get(i, 0);
+      let cy = get(i, 1);
+      let w = get(i, 2);
+      let h = get(i, 3);
+
+      if (cx <= 1 && cy <= 1 && w <= 1 && h <= 1) {
+        cx *= meta.size;
+        cy *= meta.size;
+        w *= meta.size;
+        h *= meta.size;
+      }
+
+      const obj = hasObjectness ? get(i, 4) : 1;
+
+      let bestClass = -1;
+      let bestScore = -Infinity;
+
+      for (let c = 0; c < availableClasses; c++) {
+        const s = get(i, classOffset + c);
+        if (s > bestScore) {
+          bestScore = s;
+          bestClass = c;
+        }
+      }
+
+      const score = obj * bestScore;
+
+      if (score < CONF_THRESHOLD || bestClass < 0) continue;
+
+      let x1 = cx - w / 2;
+      let y1 = cy - h / 2;
+      let x2 = cx + w / 2;
+      let y2 = cy + h / 2;
+
+      x1 = (x1 - meta.padX) / meta.scale;
+      y1 = (y1 - meta.padY) / meta.scale;
+      x2 = (x2 - meta.padX) / meta.scale;
+      y2 = (y2 - meta.padY) / meta.scale;
+
+      x1 = clamp(x1, 0, meta.srcW);
+      y1 = clamp(y1, 0, meta.srcH);
+      x2 = clamp(x2, 0, meta.srcW);
+      y2 = clamp(y2, 0, meta.srcH);
+
+      if ((x2 - x1) < 5 || (y2 - y1) < 5) continue;
+
+      dets.push({
+        classId: bestClass,
+        className: classNames[bestClass] || `class_${bestClass}`,
+        score,
+        x1, y1, x2, y2
+      });
+    }
+
+    return nms(dets);
+  }
+
+  async function runInference() {
+    if (!session || inferBusy || video.readyState < 2) return;
+
+    inferBusy = true;
+
+    try {
+      const t0 = performance.now();
+      const { tensor, meta } = preprocessFrame();
+      const outputs = await session.run({ [inputName]: tensor });
+      const out = outputs[outputName] || Object.values(outputs)[0];
+
+      latestDetections = parseYoloOutput(out, meta);
+      latestLatency = performance.now() - t0;
+      inferCounter++;
+
+      updateTrafficLog(latestDetections);
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      inferBusy = false;
+    }
+  }
+
+  function getCoverFit(srcW, srcH, dstW, dstH) {
+    const scale = Math.max(dstW / srcW, dstH / srcH);
+    const w = srcW * scale;
+    const h = srcH * scale;
+
+    return {
+      scale,
+      x: (dstW - w) / 2,
+      y: (dstH - h) / 2,
+      w,
+      h
+    };
+  }
+
+  function draw() {
+    const t = performance.now();
+    frameCounter++;
+
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+
+    ctx.clearRect(0, 0, viewW, viewH);
+
+    if (video.videoWidth && video.videoHeight) {
+      const fit = getCoverFit(video.videoWidth, video.videoHeight, viewW, viewH);
+      ctx.drawImage(video, fit.x, fit.y, fit.w, fit.h);
+      drawDetections(fit);
+    } else {
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, viewW, viewH);
+    }
+
+    if (running && !inferBusy && t - lastInferAt >= INFER_INTERVAL_MS) {
+      lastInferAt = t;
+      runInference();
+    }
+
+    const elapsed = t - fpsWindowStart;
+
+    if (elapsed >= 1000) {
+      uiFps = frameCounter * 1000 / elapsed;
+      aiFps = inferCounter * 1000 / elapsed;
+      frameCounter = 0;
+      inferCounter = 0;
+      fpsWindowStart = t;
+    }
+
+    setDot(perfDot, latestLatency > 0 ? "ok" : "");
+    perfStatus.textContent =
+      `UI FPS: ${uiFps.toFixed(0)} | AI FPS: ${aiFps.toFixed(1)} | Latency: ${latestLatency ? latestLatency.toFixed(0) : "--"} ms | ${provider}/${inputSize}`;
+
+    requestAnimationFrame(draw);
+  }
+
+  function drawDetections(fit) {
+    ctx.lineWidth = 3;
+    ctx.textBaseline = "top";
+    ctx.font = "600 14px system-ui, -apple-system, Segoe UI, sans-serif";
+
+    for (const d of latestDetections) {
+      const x = fit.x + d.x1 * fit.scale;
+      const y = fit.y + d.y1 * fit.scale;
+      const w = (d.x2 - d.x1) * fit.scale;
+      const h = (d.y2 - d.y1) * fit.scale;
+
+      ctx.strokeStyle = "rgba(41, 227, 125, 0.95)";
+      ctx.fillStyle = "rgba(41, 227, 125, 0.14)";
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillRect(x, y, w, h);
+
+      const label = `${d.className} ${(d.score * 100).toFixed(0)}%`;
+      const textW = Math.min(ctx.measureText(label).width + 12, window.innerWidth - 24);
+      const textH = 24;
+      const labelY = Math.max(8, y - textH - 4);
+
+      ctx.fillStyle = "rgba(0,0,0,0.72)";
+      ctx.fillRect(x, labelY, textW, textH);
+
+      ctx.fillStyle = "#d9ffe8";
+      ctx.fillText(label, x + 6, labelY + 4, textW - 12);
+    }
+  }
+
+  function updateTrafficLog(dets) {
+    const now = Date.now();
+    const nowDate = new Date(now);
+    const coord = geoSnapshot();
+
+    const byClass = new Map();
+
+    for (const d of dets) {
+      const key = d.className;
+      const old = byClass.get(key);
+
+      if (!old) {
+        byClass.set(key, {
+          classId: d.classId,
+          className: d.className,
+          count: 1,
+          bestScore: d.score
+        });
+      } else {
+        old.count += 1;
+        old.bestScore = Math.max(old.bestScore, d.score);
+      }
+    }
+
+    for (const item of byClass.values()) {
+      const key = item.className;
+      let ev = activeEvents.get(key);
+
+      if (!ev) {
+        ev = {
+          id: ++eventId,
+          classId: item.classId,
+          className: item.className,
+          startTime: nowDate,
+          startCoord: coord,
+          endTime: null,
+          endCoord: null,
+          lastSeenTime: nowDate,
+          lastSeenCoord: coord,
+          bestScore: item.bestScore,
+          maxCount: item.count,
+          active: true
+        };
+
+        activeEvents.set(key, ev);
+        logEvents.unshift(ev);
+      } else {
+        ev.lastSeenTime = nowDate;
+        ev.lastSeenCoord = coord || ev.lastSeenCoord;
+        ev.bestScore = Math.max(ev.bestScore, item.bestScore);
+        ev.maxCount = Math.max(ev.maxCount, item.count);
+      }
+    }
+
+    for (const [key, ev] of activeEvents.entries()) {
+      if (!byClass.has(key)) {
+        const elapsed = now - ev.lastSeenTime.getTime();
+
+        if (elapsed >= LOST_GRACE_MS) {
+          ev.active = false;
+          ev.endTime = ev.lastSeenTime;
+          ev.endCoord = ev.lastSeenCoord;
+          activeEvents.delete(key);
+        }
+      }
+    }
+
+    renderLog();
+  }
+
+  function renderLog() {
+    const active = [...activeEvents.values()];
+
+    if (active.length === 0) {
+      activeSignsEl.innerHTML =
+        `<span class="sign-chip" style="border-color:rgba(255,255,255,0.18);background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.64)">Chưa thấy biển báo</span>`;
+    } else {
+      activeSignsEl.innerHTML = active.map(ev =>
+        `<span class="sign-chip">${escapeHtml(ev.className)} · ${(ev.bestScore * 100).toFixed(0)}%</span>`
+      ).join("");
+    }
+
+    emptyLog.style.display = logEvents.length ? "none" : "block";
+
+    const visibleEvents = logEvents.slice(0, 80);
+
+    logBody.innerHTML = visibleEvents.map(ev => `
+      <tr class="${ev.active ? "active-row" : ""}">
+        <td class="sign">
+          ${escapeHtml(ev.className)}
+          <div class="small">${ev.active ? "Đang thấy" : "Đã kết thúc"} · max ${ev.maxCount}</div>
+        </td>
+        <td class="small">
+          ${nowStamp(ev.startTime)}
+          <br>${escapeHtml(formatGeo(ev.startCoord))}
+        </td>
+        <td class="small">
+          ${ev.endTime ? nowStamp(ev.endTime) : "—"}
+          <br>${ev.endCoord ? escapeHtml(formatGeo(ev.endCoord)) : "—"}
+        </td>
+      </tr>
+    `).join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function clearLog() {
+    logEvents = [];
+    activeEvents.clear();
+    latestDetections = [];
+    renderLog();
+  }
+
+  function downloadCsv() {
+    const header = [
+      "id",
+      "class_id",
+      "class_name",
+      "start_time",
+      "start_lat",
+      "start_lon",
+      "end_time",
+      "end_lat",
+      "end_lon",
+      "best_confidence",
+      "max_count",
+      "status"
+    ];
+
+    const rows = logEvents.slice().reverse().map(ev => [
+      ev.id,
+      ev.classId,
+      ev.className,
+      nowStamp(ev.startTime),
+      ev.startCoord?.lat ?? "",
+      ev.startCoord?.lon ?? "",
+      ev.endTime ? nowStamp(ev.endTime) : "",
+      ev.endCoord?.lat ?? "",
+      ev.endCoord?.lon ?? "",
+      ev.bestScore.toFixed(4),
+      ev.maxCount,
+      ev.active ? "active" : "ended"
+    ]);
+
+    const csv = [header, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replaceAll('"', '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+
+    a.href = url;
+    a.download = `openadas_traffic_sign_log_${Date.now()}.csv`;
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  async function requestWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        await navigator.wakeLock.request("screen");
+      }
+    } catch (_) {}
+  }
+
+  async function startApp() {
+    startOverlay.style.display = "none";
+
+    try {
+      resizeCanvas();
+
+      modelStatus.textContent = "Đang mở camera...";
+      await startCamera();
+
+      startGps();
+
+      modelStatus.textContent = "Đang tải model...";
+      await initModel();
+
+      await requestWakeLock();
+
+      running = true;
+      renderLog();
+    } catch (err) {
+      console.error(err);
+      startOverlay.style.display = "grid";
+      setDot(modelDot, "err");
+      modelStatus.textContent = `Không khởi động được: ${err.message || err}`;
+    }
+  }
+
+  window.addEventListener("resize", resizeCanvas);
+  window.addEventListener("orientationchange", () => setTimeout(resizeCanvas, 250));
+
+  clearBtn.addEventListener("click", clearLog);
+  csvBtn.addEventListener("click", downloadCsv);
+  startBtn.addEventListener("click", startApp);
+
+  resizeCanvas();
+  renderLog();
+  requestAnimationFrame(draw);
+
+  startApp().catch(() => {
+    startOverlay.style.display = "grid";
+  });
+})();
+</script>
+</body>
+</html>
